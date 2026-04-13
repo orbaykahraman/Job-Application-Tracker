@@ -1,5 +1,6 @@
 package com.nexcode.jobapplicationtracker.service.impl;
 
+import com.nexcode.jobapplicationtracker.domain.ApplicationNote;
 import com.nexcode.jobapplicationtracker.domain.JobApplication;
 import com.nexcode.jobapplicationtracker.domain.enums.ApplicationStatus;
 import com.nexcode.jobapplicationtracker.dto.request.AddNoteRequestDto;
@@ -8,21 +9,42 @@ import com.nexcode.jobapplicationtracker.dto.request.UpdateApplicationRequestDto
 import com.nexcode.jobapplicationtracker.dto.response.ApplicationResponseDto;
 import com.nexcode.jobapplicationtracker.dto.response.NoteResponseDto;
 import com.nexcode.jobapplicationtracker.mapper.ApplicationMapper;
+import com.nexcode.jobapplicationtracker.repository.ApplicationNoteRepository;
 import com.nexcode.jobapplicationtracker.repository.JobApplicationRepository;
 import com.nexcode.jobapplicationtracker.service.ApplicationService;
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
-@RequiredArgsConstructor
 public class ApplicationServiceImpl implements ApplicationService {
 
     private final JobApplicationRepository jobApplicationRepository;
     private final ApplicationMapper applicationMapper;
+    private final Map<ApplicationStatus, List<ApplicationStatus>> VALID_TRANSITIONS;
+    private final ApplicationNoteRepository applicationNoteRepository;
+
+    public ApplicationServiceImpl(JobApplicationRepository jobApplicationRepository, ApplicationMapper applicationMapper,
+                                  ApplicationNoteRepository applicationNoteRepository
+    ){
+        this.jobApplicationRepository = jobApplicationRepository;
+        this.applicationMapper = applicationMapper;
+        this.applicationNoteRepository = applicationNoteRepository;
+
+        this.VALID_TRANSITIONS = new HashMap<>();
+        this.VALID_TRANSITIONS.put(ApplicationStatus.APPLIED, List.of(ApplicationStatus.SCREENING));
+        this.VALID_TRANSITIONS.put(ApplicationStatus.SCREENING, List.of(ApplicationStatus.INTERVIEW));
+        this.VALID_TRANSITIONS.put(ApplicationStatus.INTERVIEW, List.of(ApplicationStatus.OFFER, ApplicationStatus.REJECTED));
+        this.VALID_TRANSITIONS.put(ApplicationStatus.OFFER, List.of(ApplicationStatus.ACCEPTED));
+        this.VALID_TRANSITIONS.put(ApplicationStatus.REJECTED, List.of());
+        this.VALID_TRANSITIONS.put(ApplicationStatus.ACCEPTED, List.of());
+    }
+
+
 
     @Override
     public ApplicationResponseDto create(CreateApplicationRequestDto createApplicationRequestDto) {
@@ -68,16 +90,43 @@ public class ApplicationServiceImpl implements ApplicationService {
 
     @Override
     public ApplicationResponseDto updateStatus(UUID id, ApplicationStatus status) {
-        return null;
+        JobApplication updateJobStatus = jobApplicationRepository.findById(id)
+                .orElseThrow(()-> new RuntimeException("Not found job"));
+        ApplicationStatus currentStatus = updateJobStatus.getStatus();
+        List<ApplicationStatus> validNextStatuses = VALID_TRANSITIONS.get(currentStatus);
+        if (!validNextStatuses.contains(status)){
+            throw new RuntimeException("Not found status");
+        }
+        updateJobStatus.setStatus(status);
+        updateJobStatus.setLastUpdatedAt(LocalDateTime.now());
+        jobApplicationRepository.save(updateJobStatus);
+
+        return applicationMapper.toResponse(updateJobStatus);
     }
 
     @Override
     public NoteResponseDto addNote(UUID id, AddNoteRequestDto addNoteRequestDto) {
-        return null;
+
+        JobApplication jobApplication = jobApplicationRepository.findById(id)
+                .orElseThrow(()-> new RuntimeException("Not found job"));
+        ApplicationNote applicationNote = ApplicationNote.builder()
+                .content(addNoteRequestDto.getContent())
+                .createdAt(LocalDateTime.now())
+                .jobApplication(jobApplication)
+                .build();
+
+        applicationNoteRepository.save(applicationNote);
+        return applicationMapper.toNoteResponse(applicationNote);
+
     }
 
     @Override
     public List<NoteResponseDto> getNotesByApplicationId(UUID id) {
-        return List.of();
+        JobApplication jobApplication = jobApplicationRepository.findById(id)
+                .orElseThrow(()-> new RuntimeException("Not found job"));
+        List<ApplicationNote> applicationNoteList = applicationNoteRepository.findByJobApplication_Id(id);
+        return applicationNoteList.stream()
+                .map(applicationMapper::toNoteResponse)
+                .toList();
     }
 }
