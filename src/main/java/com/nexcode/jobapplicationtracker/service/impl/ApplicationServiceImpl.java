@@ -8,6 +8,8 @@ import com.nexcode.jobapplicationtracker.dto.request.CreateApplicationRequestDto
 import com.nexcode.jobapplicationtracker.dto.request.UpdateApplicationRequestDto;
 import com.nexcode.jobapplicationtracker.dto.response.ApplicationResponseDto;
 import com.nexcode.jobapplicationtracker.dto.response.NoteResponseDto;
+import com.nexcode.jobapplicationtracker.exception.ApplicationNotFoundException;
+import com.nexcode.jobapplicationtracker.exception.InvalidStatusTransitionException;
 import com.nexcode.jobapplicationtracker.mapper.ApplicationMapper;
 import com.nexcode.jobapplicationtracker.repository.ApplicationNoteRepository;
 import com.nexcode.jobapplicationtracker.repository.JobApplicationRepository;
@@ -56,7 +58,7 @@ public class ApplicationServiceImpl implements ApplicationService {
     @Override
     public ApplicationResponseDto getById(UUID id) {
         JobApplication jobApplicationById = jobApplicationRepository.findById(id)
-                .orElseThrow(()-> new RuntimeException("Not found job"));
+                .orElseThrow(()-> new ApplicationNotFoundException("Application not found with id: " + id));
         return applicationMapper.toResponse(jobApplicationById);
     }
 
@@ -72,7 +74,7 @@ public class ApplicationServiceImpl implements ApplicationService {
     public ApplicationResponseDto update(UUID id, UpdateApplicationRequestDto updateApplicationRequestDto) {
 
         JobApplication jobApplication = jobApplicationRepository.findById(id)
-                .orElseThrow(()-> new RuntimeException("Not found job"));
+                .orElseThrow(()-> new ApplicationNotFoundException("Application not found with id: " + id));
         jobApplication.setCompanyName(updateApplicationRequestDto.getCompanyName());
         jobApplication.setLastUpdatedAt(LocalDateTime.now());
         jobApplication.setPosition(updateApplicationRequestDto.getPosition());
@@ -84,18 +86,19 @@ public class ApplicationServiceImpl implements ApplicationService {
     @Override
     public void delete(UUID id) {
         jobApplicationRepository.findById(id)
-                .orElseThrow(()-> new RuntimeException("Not found job"));
+                .orElseThrow(()-> new ApplicationNotFoundException("Application not found with id: " + id));
         jobApplicationRepository.deleteById(id);
     }
 
     @Override
     public ApplicationResponseDto updateStatus(UUID id, ApplicationStatus status) {
         JobApplication updateJobStatus = jobApplicationRepository.findById(id)
-                .orElseThrow(()-> new RuntimeException("Not found job"));
+                .orElseThrow(()-> new ApplicationNotFoundException("Application not found with id: " + id));
         ApplicationStatus currentStatus = updateJobStatus.getStatus();
         List<ApplicationStatus> validNextStatuses = VALID_TRANSITIONS.get(currentStatus);
         if (!validNextStatuses.contains(status)){
-            throw new RuntimeException("Not found status");
+            throw new InvalidStatusTransitionException("Invalid status transition:" + currentStatus +
+                    " → " + status );
         }
         updateJobStatus.setStatus(status);
         updateJobStatus.setLastUpdatedAt(LocalDateTime.now());
@@ -108,7 +111,7 @@ public class ApplicationServiceImpl implements ApplicationService {
     public NoteResponseDto addNote(UUID id, AddNoteRequestDto addNoteRequestDto) {
 
         JobApplication jobApplication = jobApplicationRepository.findById(id)
-                .orElseThrow(()-> new RuntimeException("Not found job"));
+                .orElseThrow(()-> new ApplicationNotFoundException("Application not found with id: " + id));
         ApplicationNote applicationNote = ApplicationNote.builder()
                 .content(addNoteRequestDto.getContent())
                 .createdAt(LocalDateTime.now())
@@ -123,7 +126,7 @@ public class ApplicationServiceImpl implements ApplicationService {
     @Override
     public List<NoteResponseDto> getNotesByApplicationId(UUID id) {
         JobApplication jobApplication = jobApplicationRepository.findById(id)
-                .orElseThrow(()-> new RuntimeException("Not found job"));
+                .orElseThrow(()-> new ApplicationNotFoundException("Application not found with id: " + id));
         List<ApplicationNote> applicationNoteList = applicationNoteRepository.findByJobApplication_Id(id);
         return applicationNoteList.stream()
                 .map(applicationMapper::toNoteResponse)
